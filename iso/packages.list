@@ -91,6 +91,11 @@ alsa-utils
 python3
 xfce4-pulseaudio-plugin
 
+# Fingerprint reader (Goodix 27c6:650a). fprintd enrolls and verifies with
+# fprintd-enroll / fprintd-verify. Login and sudo by fingerprint stay opt-in:
+# install libpam-fprintd for that.
+fprintd
+
 # Hardware bring-up and debugging
 pciutils
 usbutils

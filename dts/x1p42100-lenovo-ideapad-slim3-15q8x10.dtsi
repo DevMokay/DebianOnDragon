@@ -545,15 +545,6 @@
 		function = "gpio";
 		bias-disable;
 	};
-
-	/* Reset of the camera's eUSB2 repeater; ACPI \_SB.USB4 GpioIo pin 7. */
-	eusb9_reset_n: eusb9-reset-n-state {
-		pins = "gpio7";
-		function = "gpio";
-		drive-strength = <2>;
-		bias-disable;
-		output-low;
-	};
 };
 
 /*
@@ -585,15 +576,55 @@
  * No PMIC answers at SPMI SID 0xa: its probe fails at boot ("0xa 0x104:
  * transaction failed", pmic-spmi 1-0a error -5) with a WARNING. SIDs 0x7
  * and 0xb (the other two smb2360) answer and bind. The CRD wires
- * usb_1_ss1_hsphy (second USB-C port, USB 2.0 side) to the eUSB2 repeater
- * in this absent PMIC, so that PHY and a800000.usb have never probed on
- * this laptop. Disabling the node changes nothing for them (the repeater
- * PHY still never registers, so they keep deferring); it only stops the
- * failing probe. The port's real repeater is probably the smb2360 at
- * SID 0xb (two smb2360 for two USB-C ports), but that is unverified.
+ * usb_1_ss1_hsphy to the eUSB2 repeater in this absent PMIC; on the 83N3
+ * that PHY uses the repeater in the smb2360 at SID 0xb instead (below).
  */
 &smb2360_1 {
 	status = "disabled";
+};
+
+/*
+ * Fingerprint reader: Goodix 27c6:650a ("Goodix MOC Fingerprint Sensor",
+ * full speed), the only device on usb_1_ss1 (a800000). On the CRD this
+ * controller is the second USB-C port; the 83N3 has no second port and
+ * wires it internally, USB 2.0 only.
+ *
+ * - The USB 2.0 PHY sits behind the eUSB2 repeater of the smb2360 at
+ *   SID 0xb (the CRD's SID 0xa does not exist here). With it, the reader
+ *   enumerates and fprintd enrolls and verifies.
+ * - The controller runs on its USB 2.0 PHY only (as on the Fedora 44 guide
+ *   for this laptop), so the USB3 QMP PHY link goes away.
+ * - vreg_l2d_0p9 feeds that QMP PHY's PLL. With the QMP PHY unused, Linux
+ *   never votes for it, and the controller then sometimes cannot finish
+ *   its core soft reset ("DWC3 controller soft reset failed", the reader
+ *   is gone until the next boot). Windows votes LDO2_D for \_SB.USB1 in
+ *   its PEP D0 recipe. Measured over reboots with everything else in
+ *   this file applied: 1 soft-reset failure in 20 boots without l2d,
+ *   none in 80 with it.
+ */
+&usb_1_ss1_hsphy {
+	phys = <&smb2360_2_eusb2_repeater>;
+};
+
+&usb_1_ss1 {
+	maximum-speed = "high-speed";
+
+	phys = <&usb_1_ss1_hsphy>;
+	phy-names = "usb2-phy";
+
+	/delete-property/ snps,usb3_lpm_capable;
+
+	ports {
+		/delete-node/ port@1;
+	};
+};
+
+&usb_1_ss1_qmpphy_usb_ss_in {
+	/delete-property/ remote-endpoint;
+};
+
+&vreg_l2d_0p9 {
+	regulator-always-on;
 };
 
 &usb_1_ss2_dwc3_hs {
@@ -607,6 +638,17 @@
  * the same usb_2 design as the ThinkBook 16, whose eUSB2 repeater for
  * usb_2 is a PTN3222 at 0x4b on i2c5 with reset on TLMM 7. No camera
  * power GPIO appears in the DSDT, so none is described here.
+ *
+ * On the 83N3 nothing answers at 0x4b, and TLMM 7 resets the fingerprint
+ * reader (on usb_1_ss1), not a repeater: driving it low drops the reader
+ * off the bus, driving it high brings it back. The node below therefore
+ * has no reset GPIO and no pin state; firmware leaves TLMM 7 high and
+ * nothing touches it. It stays only so usb_2_hsphy keeps voting LDO13_B
+ * and LDO4_B as Windows does. With the reset on TLMM 7, ptn3222 held the
+ * reader in reset from its probe until usb_2 came up: when that overlapped
+ * the reader's enumeration the reader failed with -71 for the whole boot,
+ * and when it came after, the reader failed its next USB reset (fprintd
+ * resets it on every open).
  */
 &i2c5 {
 	/*
@@ -644,11 +686,6 @@
 
 		vdd3v3-supply = <&vreg_l13b_3p0>;
 		vdd1v8-supply = <&vreg_l4b_1p8>;
-
-		reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>;
-
-		pinctrl-0 = <&eusb9_reset_n>;
-		pinctrl-names = "default";
 	};
 };
 

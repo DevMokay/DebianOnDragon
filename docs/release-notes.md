@@ -2,6 +2,48 @@
 
 No new kernel. v0.5.0 stays on `9dbf932` (kernel series 6, support 0.5.1).
 
+## Fingerprint reader
+
+The reader was listed as Unsupported. It is a Goodix 27c6:650a on
+`usb_1_ss1` (a800000), the CRD's second USB-C port controller, wired
+internally and USB 2.0 only. Three devicetree changes bring it up; no
+userspace workaround is needed.
+
+- **Repeater**: `usb_1_ss1_hsphy` pointed at the eUSB2 repeater of an
+  smb2360 at SPMI SID 0xa, which this laptop does not have, so the port
+  never came up. It now uses the repeater of the smb2360 at SID 0xb, and
+  the controller runs on that PHY only (`maximum-speed = "high-speed"`,
+  no SuperSpeed port or QMP PHY). With this alone the reader enumerated
+  on about half the boots.
+- **`vreg_l2d_0p9` always on**: l2d feeds the unused USB3 QMP PHY's PLL.
+  Without it the controller sometimes cannot finish its core soft reset
+  ("DWC3 controller soft reset failed") and the reader is gone for that
+  boot: 3 failures in 12 boots before the TLMM 7 fix, 1 in 20 after it.
+  Windows votes LDO2_D for `\_SB.USB1`.
+- **TLMM 7 is the reader's reset**: `redriver@4b` (PTN3222 on i2c5, for
+  the webcam on `usb_2`) had `reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>`,
+  taken from the ThinkBook 16. On the 83N3 nothing answers at 0x4b, and
+  driving TLMM 7 low drops the reader off the bus; driving it high brings
+  it back. `phy_nxp_ptn3222` asserted that reset from its probe until
+  `usb_2` initialised its PHY. If that window overlapped the reader's
+  enumeration, the reader failed with -71 for the whole boot; if it came
+  after, the reader failed its next USB reset, which fprintd does on every
+  open. With l2d on and the reset in place: 17 of 20 boots. The node now
+  has no reset GPIO and no pin state, and stays so `usb_2_hsphy` keeps
+  voting LDO13_B and LDO4_B. The webcam works as before.
+
+Measured on an 83N3 after each reboot: `lsusb`, `fprintd-list`, and the
+webcam (`lsusb` and `/dev/video0`). With all three changes, 80 of 80
+boots, with no -71 and no soft reset failure. Those 80 include 20 with
+the reader left on USB autosuspend (libfprint's hwdb default), where
+fprintd woke it every time. The reader also stayed up across a deep
+suspend on battery with the lid closed, and fprintd worked after resume.
+
+Earlier attempts at the -71 failures (starting the ADSP after the reader,
+force-loading the eUSB2 PHY in the initramfs, keeping `phy_nxp_ptn3222`
+out of the initramfs) only moved the timing of the TLMM 7 reset. None of
+them is needed with the reset removed: 20 of 20 boots without each.
+
 ## Mute and volume ignored the Hyprland session
 
 Support 0.5.1 opens the keyboard, then logged `no active seat` on every

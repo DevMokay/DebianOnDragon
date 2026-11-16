@@ -54,13 +54,13 @@ Working.
 | Internal speakers | **Working** | v0.4.0 | Kernel series 5 on the 83N3: `speaker-test` plays Front Left. Front Right is silent on this unit in Debian and in Windows, so that speaker is a hardware fault. PA volume is capped at 0 dB; there is no active speaker protection. Keep the volume moderate |
 | Mute, volume down, volume up (F1/F2/F3) | **Experimental** | series 6 | On the 83N3 these keys arrive on the typing-keyboard node (`platform-a84000.i2c-event-kbd`, mode 660, `root:input`). Support 0.5.1 runs as root but treated logind session 2 (Hyprland on seat0) as inactive, because `ACTIVE=` in the seat file is the session id. Support 0.5.2 uses `loginctl show-seat seat0 -p ActiveSession`. Not confirmed on hardware yet |
 | USB-A ports (2, multiport controller) | **Working** | v0.1.0 | Both ports used on hardware (mouse, install stick); USB 3 lanes enabled, speed not yet measured |
-| USB-C ports (2, `usb_1_ss0/ss1`) | **Untested** | v0.1.0 | First port's controller (`usb_1_ss0`) comes up. The second (`usb_1_ss1`) never probes: the CRD puts its eUSB2 repeater in a PMIC (SPMI SID 0xa) that this laptop doesn't have (board notes). The CRD retimers don't answer, so role switching / alt mode don't work |
+| USB-C port (`usb_1_ss0`) | **Untested** | v0.1.0 | The controller comes up. The 83N3 has one USB-C port: the CRD's second port controller (`usb_1_ss1`) carries the fingerprint reader instead. The CRD retimers don't answer, so role switching / alt mode don't work |
 | Third USB controller (`usb_1_ss2`) | **N/A** | v0.2.0 | Disabled in this laptop's ACPI; its PHY carries HDMI |
 | USB-C DisplayPort alt mode | **Unsupported** | — | Disabled: it blocked the internal display while ADSP firmware was missing |
 | Battery status, charging info | **Untested** | v0.1.0 | Need the ADSP firmware from `debondragon-firmware` |
 | SD card reader (BayHub, pcie5) | **Untested** | v0.1.0 | |
 | Suspend / resume | **Untested** | — | |
-| Fingerprint reader | **Unsupported** | — | |
+| Fingerprint reader | **Working** | support 0.5.2 | Goodix 27c6:650a on `usb_1_ss1`, USB 2.0 only, behind the eUSB2 repeater of the smb2360 at SID 0xb. fprintd enrolls and verifies. Devicetree only: the repeater, `vreg_l2d_0p9` always on, and TLMM 7 left alone (it is the reader's reset, not a camera repeater's). 80 of 80 boots with fprintd and the webcam checked after each; the reader survived a deep suspend on battery with the lid closed |
 
 ## Remaining hardware (after v0.4.0)
 
@@ -73,10 +73,10 @@ Working.
 - **HDMI audio** stays silent: the T14s topology has no DisplayPort graphs.
 - **This unit's right speaker** is dead in Windows as well. That is a
   hardware fault, not a missing channel in the driver.
-- **USB-C, second port**: its USB 2.0 repeater sits in an smb2360 at SPMI
-  SID 0xa that this laptop doesn't have (probably SID 0xb instead,
-  unverified); the CRD retimers don't answer, so role switching and DP alt
-  mode don't work on either port.
+- **USB-C retimers**: the CRD retimers don't answer, so role switching and
+  DP alt mode don't work. The 83N3 has one USB-C port (`usb_1_ss0`); the
+  CRD's second port controller (`usb_1_ss1`) is wired to the fingerprint
+  reader.
 - **Fan**: series 6 throttles the CPUs at 75 °C and the GPU at 85 °C.
   Support 0.5.1's curve write was acknowledged and the fan was still
   stopped at 73.8 °C. Support 0.5.2 reads the curve back. Confirm it
